@@ -5,8 +5,10 @@ import static com.limelight.utils.ServerHelper.getSecondaryDisplay;
 import android.app.Activity;
 import android.app.Service;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -23,6 +25,7 @@ import com.limelight.nvstream.http.NvHTTP;
 import com.limelight.nvstream.http.PairingManager;
 import com.limelight.nvstream.wol.WakeOnLanSender;
 import com.limelight.preferences.PreferenceConfiguration;
+import com.limelight.profiles.ProfilesManager;
 import com.limelight.utils.CacheHelper;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.ServerHelper;
@@ -40,11 +43,15 @@ import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
 public class ShortcutTrampoline extends AppCompatActivity {
+    public static final String EXTRA_STREAM_RESOLUTION = "com.limelight.extra.STREAM_RESOLUTION";
+
+    private static final String LAUNCH_RESOLUTION_PREF_KEY = "list_resolution";
     private PreferenceConfiguration prefConfig;
     private String uuidString;
     private NvApp app;
@@ -57,6 +64,118 @@ public class ShortcutTrampoline extends AppCompatActivity {
     private ComputerManagerService.ComputerManagerBinder managerBinder;
 
     private static final String TAG = "ShortcutTrampoline";
+
+    static SharedPreferences getLaunchSharedPreferences(Context context, Intent intent) {
+        SharedPreferences basePrefs = ProfilesManager.getInstance().getOverlayingSharedPreferences(context);
+        String resolutionOverride = getLaunchResolutionOverride(intent);
+        if (resolutionOverride == null) {
+            return basePrefs;
+        }
+
+        return new LaunchSharedPreferences(basePrefs, resolutionOverride);
+    }
+
+    static String getLaunchResolutionOverride(Intent intent) {
+        if (intent == null) {
+            return null;
+        }
+
+        String resolution = intent.getStringExtra(EXTRA_STREAM_RESOLUTION);
+        if (resolution == null) {
+            return null;
+        }
+
+        String normalizedResolution = resolution.trim().toLowerCase(Locale.US);
+        String[] dimensions = normalizedResolution.split("x", 2);
+        if (dimensions.length != 2) {
+            return null;
+        }
+
+        try {
+            int width = Integer.parseInt(dimensions[0].trim());
+            int height = Integer.parseInt(dimensions[1].trim());
+            if (width <= 0 || height <= 0) {
+                return null;
+            }
+
+            return width + "x" + height;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static final class LaunchSharedPreferences implements SharedPreferences {
+        private final SharedPreferences basePrefs;
+        private final String resolutionOverride;
+
+        LaunchSharedPreferences(SharedPreferences basePrefs, String resolutionOverride) {
+            this.basePrefs = basePrefs;
+            this.resolutionOverride = resolutionOverride;
+        }
+
+        @Override
+        public Map<String, ?> getAll() {
+            Map<String, Object> combined = new HashMap<>(basePrefs.getAll());
+            combined.put(LAUNCH_RESOLUTION_PREF_KEY, resolutionOverride);
+            return combined;
+        }
+
+        @Override
+        public String getString(String key, String defValue) {
+            if (LAUNCH_RESOLUTION_PREF_KEY.equals(key)) {
+                return resolutionOverride;
+            }
+            return basePrefs.getString(key, defValue);
+        }
+
+        @Override
+        public int getInt(String key, int defValue) {
+            return basePrefs.getInt(key, defValue);
+        }
+
+        @Override
+        public long getLong(String key, long defValue) {
+            return basePrefs.getLong(key, defValue);
+        }
+
+        @Override
+        public float getFloat(String key, float defValue) {
+            return basePrefs.getFloat(key, defValue);
+        }
+
+        @Override
+        public boolean getBoolean(String key, boolean defValue) {
+            return basePrefs.getBoolean(key, defValue);
+        }
+
+        @Override
+        public java.util.Set<String> getStringSet(String key, java.util.Set<String> defValues) {
+            return basePrefs.getStringSet(key, defValues);
+        }
+
+        @Override
+        public boolean contains(String key) {
+            if (LAUNCH_RESOLUTION_PREF_KEY.equals(key)) {
+                return true;
+            }
+            return basePrefs.contains(key);
+        }
+
+        @Override
+        public SharedPreferences.Editor edit() {
+            return basePrefs.edit();
+        }
+
+        @Override
+        public void registerOnSharedPreferenceChangeListener(SharedPreferences.OnSharedPreferenceChangeListener listener) {
+            basePrefs.registerOnSharedPreferenceChangeListener(listener);
+        }
+
+        @Override
+        public void unregisterOnSharedPreferenceChangeListener(SharedPreferences.OnSharedPreferenceChangeListener listener) {
+            basePrefs.unregisterOnSharedPreferenceChangeListener(listener);
+        }
+    }
 
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         public void onServiceConnected(ComponentName className, IBinder binder) {
@@ -354,13 +473,12 @@ public class ShortcutTrampoline extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        prefConfig = PreferenceConfiguration.readPreferences(this);
+        Intent intent = getIntent();
+        prefConfig = PreferenceConfiguration.readPreferences(this, getLaunchSharedPreferences(this, intent));
 
         UiHelper.notifyNewRootView(this);
         ComputerDatabaseManager dbManager = new ComputerDatabaseManager(this);
         ComputerDetails _computer = null;
-
-        Intent intent = getIntent();
         String action = intent.getAction();
         Uri dataUri = intent.getData();
 
