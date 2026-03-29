@@ -66,3 +66,29 @@ jobs:
           name: release-apks
           path: app/build/outputs/apk/**/release/*.apk
           if-no-files-found: error
+
+  tag-build:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Create build tag
+        run: |
+          TAG_NAME="build-${GITHUB_RUN_NUMBER}-$(git rev-parse --short=12 "$GITHUB_SHA")"
+          git fetch --tags
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG_NAME" "$GITHUB_SHA" -m "Successful Android build for $GITHUB_SHA"
+          git push origin "$TAG_NAME"
