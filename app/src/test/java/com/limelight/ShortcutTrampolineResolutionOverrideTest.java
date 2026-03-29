@@ -92,7 +92,7 @@ public class ShortcutTrampolineResolutionOverrideTest {
                 .commit();
 
         Intent intent = new Intent()
-                .putExtra(ShortcutTrampoline.EXTRA_STREAM_RESOLUTION, "1024x768");
+                .putExtra(ShortcutTrampoline.EXTRA_STREAM_RESOLUTION, "1024-by-768");
 
         PreferenceConfiguration launchConfig = PreferenceConfiguration.readPreferences(
                 context,
