@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   pull_request:
   push:
+    branches:
+      - '**'
 
 permissions:
   contents: read
@@ -73,6 +75,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    outputs:
+      tag_name: ${{ steps.create_tag.outputs.tag_name }}
 
     steps:
       - name: Check out repository
@@ -81,8 +85,10 @@ jobs:
           fetch-depth: 0
 
       - name: Create build tag
+        id: create_tag
         run: |
           TAG_NAME="build-${GITHUB_RUN_NUMBER}-$(git rev-parse --short=12 "$GITHUB_SHA")"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
           git fetch --tags
           if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "Tag $TAG_NAME already exists"
@@ -92,3 +98,44 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG_NAME" "$GITHUB_SHA" -m "Successful Android build for $GITHUB_SHA"
           git push origin "$TAG_NAME"
+
+  publish-release-assets:
+    needs:
+      - build
+      - tag-build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download debug APK artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" -n debug-apks -D release-assets/debug
+
+      - name: Download release APK artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" -n release-apks -D release-assets/release
+
+      - name: Create or update release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.tag-build.outputs.tag_name }}
+        shell: bash
+        run: |
+          mapfile -d '' APK_FILES < <(find release-assets -type f -name '*.apk' -print0)
+          if [ "${#APK_FILES[@]}" -eq 0 ]; then
+            echo "No APK assets were downloaded"
+            exit 1
+          fi
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "${APK_FILES[@]}" --clobber
+          else
+            gh release create "$TAG_NAME" "${APK_FILES[@]}" \
+              --title "$TAG_NAME" \
+              --notes "Automated Android build assets for $GITHUB_SHA"
+          fi
