@@ -5,9 +5,11 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.view.Display;
+import android.util.DisplayMetrics;
 
 import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.profiles.ProfilesManager;
+import com.limelight.utils.ServerHelper;
 
 public class PreferenceConfiguration {
 
@@ -36,6 +38,7 @@ public class PreferenceConfiguration {
     public static final String CUSTOM_BITRATE_PREF_STRING = "edit_diy_bitrate";
     public static final String CUSTOM_REFRESH_RATE_PREF_STRING = "custom_refresh_rate";
     public static final String CUSTOM_RESOLUTION_PREF_STRING = "edit_diy_w_h";
+    public static final String AUTO_STREAM_VALUE = "auto";
 
     private static final String LEGACY_RES_FPS_PREF_STRING = "list_resolution_fps";
     private static final String LEGACY_ENABLE_51_SURROUND_PREF_STRING = "checkbox_51_surround";
@@ -120,6 +123,7 @@ public class PreferenceConfiguration {
     private static final String CHECKBOX_ENABLE_QUIT_DIALOG = "checkbox_enable_quit_dialog";
 
     private static final String CHECKBOX_ENABLE_FLOATING_BUTTON = "checkbox_enable_floating_button";
+    private static final String ENABLE_FULL_EXTERNAL_DISPLAY_PREF_STRING = "checkbox_enable_fullexdisplay";
 
     private static final String CHECKBOX_SHOW_OVERLAY_ZOOM_TOGGLE_BUTTON = "checkbox_show_overlay_zoom_toggle_button";
 
@@ -488,6 +492,79 @@ public class PreferenceConfiguration {
         }
     }
 
+    private static int[] getActiveDisplayDimensions(Context context, SharedPreferences prefs) {
+        Display display = ServerHelper.getActiveDisplay(
+                context,
+                prefs.getBoolean(ENABLE_FULL_EXTERNAL_DISPLAY_PREF_STRING, false));
+
+        int width;
+        int height;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && display != null) {
+            width = display.getMode().getPhysicalWidth();
+            height = display.getMode().getPhysicalHeight();
+        }
+        else if (display != null) {
+            DisplayMetrics metrics = new DisplayMetrics();
+            display.getRealMetrics(metrics);
+            width = metrics.widthPixels;
+            height = metrics.heightPixels;
+        }
+        else {
+            DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+            width = metrics.widthPixels;
+            height = metrics.heightPixels;
+        }
+
+        return new int[] {Math.max(width, height), Math.min(width, height)};
+    }
+
+    private static String resolveResolutionString(Context context, SharedPreferences prefs, String resString) {
+        if (resString == null || resString.isEmpty()) {
+            return DEFAULT_RESOLUTION;
+        }
+
+        if (AUTO_STREAM_VALUE.equalsIgnoreCase(resString)) {
+            int[] dimensions = getActiveDisplayDimensions(context, prefs);
+            return dimensions[0] + "x" + dimensions[1];
+        }
+
+        if (!resString.contains("x")) {
+            return convertFromLegacyResolutionString(resString);
+        }
+
+        return resString;
+    }
+
+    private static float getAutoRefreshRate(Context context, SharedPreferences prefs) {
+        Display display = ServerHelper.getActiveDisplay(
+                context,
+                prefs.getBoolean(ENABLE_FULL_EXTERNAL_DISPLAY_PREF_STRING, false));
+        float refreshRate;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && display != null) {
+            refreshRate = display.getMode().getRefreshRate();
+        }
+        else if (display != null) {
+            refreshRate = display.getRefreshRate();
+        }
+        else {
+            refreshRate = Float.parseFloat(DEFAULT_FPS);
+        }
+
+        return refreshRate > 0 ? refreshRate : Float.parseFloat(DEFAULT_FPS);
+    }
+
+    private static float resolveFpsValue(Context context, SharedPreferences prefs, String fpsString) {
+        if (fpsString == null || fpsString.isEmpty()) {
+            return Float.parseFloat(DEFAULT_FPS);
+        }
+
+        if (AUTO_STREAM_VALUE.equalsIgnoreCase(fpsString)) {
+            return getAutoRefreshRate(context, prefs);
+        }
+
+        return Float.parseFloat(fpsString);
+    }
+
     public static int getDefaultBitrate(String resString, String fpsString) {
         int width = getWidthFromResolutionString(resString);
         int height = getHeightFromResolutionString(resString);
@@ -574,8 +651,20 @@ public class PreferenceConfiguration {
     public static int getDefaultBitrate(Context context) {
         SharedPreferences prefs = ProfilesManager.getInstance().getOverlayingSharedPreferences(context);
         return getDefaultBitrate(
-                prefs.getString(RESOLUTION_PREF_STRING, DEFAULT_RESOLUTION),
-                prefs.getString(FPS_PREF_STRING, DEFAULT_FPS));
+                resolveResolutionString(context, prefs, prefs.getString(RESOLUTION_PREF_STRING, DEFAULT_RESOLUTION)),
+                Float.toString(resolveFpsValue(context, prefs, prefs.getString(FPS_PREF_STRING, DEFAULT_FPS))));
+    }
+
+    public static int getDefaultBitrate(Context context, SharedPreferences prefs, String resString, String fpsString) {
+        String effectiveResolution = resolveResolutionString(
+                context,
+                prefs,
+                resString != null ? resString : prefs.getString(RESOLUTION_PREF_STRING, DEFAULT_RESOLUTION));
+        String effectiveFps = Float.toString(resolveFpsValue(
+                context,
+                prefs,
+                fpsString != null ? fpsString : prefs.getString(FPS_PREF_STRING, DEFAULT_FPS)));
+        return getDefaultBitrate(effectiveResolution, effectiveFps);
     }
 
     private static FormatOption getVideoFormatValue(Context context) {
@@ -782,17 +871,18 @@ private static int getFramePacingValue(Context context) {
         }
         else {
             // Use the new preference location
-            String resStr = prefs.getString(RESOLUTION_PREF_STRING, PreferenceConfiguration.DEFAULT_RESOLUTION);
+            String storedResStr = prefs.getString(RESOLUTION_PREF_STRING, PreferenceConfiguration.DEFAULT_RESOLUTION);
+            String resStr = resolveResolutionString(context, prefs, storedResStr);
 
             // Convert legacy resolution strings to the new style
-            if (!resStr.contains("x")) {
-                resStr = PreferenceConfiguration.convertFromLegacyResolutionString(resStr);
+            if (!storedResStr.contains("x") && !AUTO_STREAM_VALUE.equalsIgnoreCase(storedResStr)) {
                 prefs.edit().putString(RESOLUTION_PREF_STRING, resStr).apply();
             }
 
             config.width = PreferenceConfiguration.getWidthFromResolutionString(resStr);
             config.height = PreferenceConfiguration.getHeightFromResolutionString(resStr);
-            config.fps = Float.parseFloat(prefs.getString(FPS_PREF_STRING, PreferenceConfiguration.DEFAULT_FPS));
+            config.fps = resolveFpsValue(context, prefs,
+                    prefs.getString(FPS_PREF_STRING, PreferenceConfiguration.DEFAULT_FPS));
         }
 
         if (prefs.contains(LEGACY_STRETCH_PREF_STRING)) {

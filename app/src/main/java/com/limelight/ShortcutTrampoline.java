@@ -50,8 +50,10 @@ import java.util.UUID;
 
 public class ShortcutTrampoline extends AppCompatActivity {
     public static final String EXTRA_STREAM_RESOLUTION = "com.limelight.extra.STREAM_RESOLUTION";
+    public static final String EXTRA_STREAM_FPS = "com.limelight.extra.STREAM_FPS";
 
     private static final String LAUNCH_RESOLUTION_PREF_KEY = "list_resolution";
+    private static final String LAUNCH_FPS_PREF_KEY = "list_fps";
     private PreferenceConfiguration prefConfig;
     private String uuidString;
     private NvApp app;
@@ -67,12 +69,27 @@ public class ShortcutTrampoline extends AppCompatActivity {
 
     static SharedPreferences getLaunchSharedPreferences(Context context, Intent intent) {
         SharedPreferences basePrefs = ProfilesManager.getInstance().getOverlayingSharedPreferences(context);
-        String resolutionOverride = getLaunchResolutionOverride(intent);
-        if (resolutionOverride == null) {
+        Map<String, String> launchOverrides = getLaunchOverrides(intent);
+        if (launchOverrides.isEmpty()) {
             return basePrefs;
         }
 
-        return new LaunchSharedPreferences(basePrefs, resolutionOverride);
+        return new LaunchSharedPreferences(basePrefs, launchOverrides);
+    }
+
+    static Map<String, String> getLaunchOverrides(Intent intent) {
+        Map<String, String> overrides = new HashMap<>();
+        String resolutionOverride = getLaunchResolutionOverride(intent);
+        if (resolutionOverride != null) {
+            overrides.put(LAUNCH_RESOLUTION_PREF_KEY, resolutionOverride);
+        }
+
+        String fpsOverride = getLaunchFpsOverride(intent);
+        if (fpsOverride != null) {
+            overrides.put(LAUNCH_FPS_PREF_KEY, fpsOverride);
+        }
+
+        return overrides;
     }
 
     static String getLaunchResolutionOverride(Intent intent) {
@@ -86,6 +103,10 @@ public class ShortcutTrampoline extends AppCompatActivity {
         }
 
         String normalizedResolution = resolution.trim().toLowerCase(Locale.US);
+        if (PreferenceConfiguration.AUTO_STREAM_VALUE.equals(normalizedResolution)) {
+            return PreferenceConfiguration.AUTO_STREAM_VALUE;
+        }
+
         String[] dimensions = normalizedResolution.split("x", 2);
         if (dimensions.length != 2) {
             return null;
@@ -104,26 +125,53 @@ public class ShortcutTrampoline extends AppCompatActivity {
         }
     }
 
+    static String getLaunchFpsOverride(Intent intent) {
+        if (intent == null) {
+            return null;
+        }
+
+        String fps = intent.getStringExtra(EXTRA_STREAM_FPS);
+        if (fps == null) {
+            return null;
+        }
+
+        String normalizedFps = fps.trim().toLowerCase(Locale.US);
+        if (PreferenceConfiguration.AUTO_STREAM_VALUE.equals(normalizedFps)) {
+            return PreferenceConfiguration.AUTO_STREAM_VALUE;
+        }
+
+        try {
+            float fpsValue = Float.parseFloat(normalizedFps);
+            if (fpsValue <= 0) {
+                return null;
+            }
+
+            return normalizedFps;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     private static final class LaunchSharedPreferences implements SharedPreferences {
         private final SharedPreferences basePrefs;
-        private final String resolutionOverride;
+        private final Map<String, String> stringOverrides;
 
-        LaunchSharedPreferences(SharedPreferences basePrefs, String resolutionOverride) {
+        LaunchSharedPreferences(SharedPreferences basePrefs, Map<String, String> stringOverrides) {
             this.basePrefs = basePrefs;
-            this.resolutionOverride = resolutionOverride;
+            this.stringOverrides = new HashMap<>(stringOverrides);
         }
 
         @Override
         public Map<String, ?> getAll() {
             Map<String, Object> combined = new HashMap<>(basePrefs.getAll());
-            combined.put(LAUNCH_RESOLUTION_PREF_KEY, resolutionOverride);
+            combined.putAll(stringOverrides);
             return combined;
         }
 
         @Override
         public String getString(String key, String defValue) {
-            if (LAUNCH_RESOLUTION_PREF_KEY.equals(key)) {
-                return resolutionOverride;
+            if (stringOverrides.containsKey(key)) {
+                return stringOverrides.get(key);
             }
             return basePrefs.getString(key, defValue);
         }
@@ -155,7 +203,7 @@ public class ShortcutTrampoline extends AppCompatActivity {
 
         @Override
         public boolean contains(String key) {
-            if (LAUNCH_RESOLUTION_PREF_KEY.equals(key)) {
+            if (stringOverrides.containsKey(key)) {
                 return true;
             }
             return basePrefs.contains(key);

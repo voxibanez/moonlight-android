@@ -25,11 +25,13 @@ import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 @Config(sdk = {33}, shadows = {com.limelight.shadows.ShadowMoonBridge.class, com.limelight.shadows.ShadowGameManager.class})
 @RunWith(RobolectricTestRunner.class)
 public class ShortcutTrampolineResolutionOverrideTest {
     private static final String RESOLUTION_PREF_KEY = "list_resolution";
+    private static final String FPS_PREF_KEY = "list_fps";
 
     private Context context;
     private SharedPreferences defaultPrefs;
@@ -135,6 +137,54 @@ public class ShortcutTrampolineResolutionOverrideTest {
         assertEquals(1440, persistedConfig.height);
         assertNotNull(profilesManager.getActive());
         assertEquals(profile.getUuid(), profilesManager.getActive().getUuid());
+    }
+
+    @Test
+    public void autoResolutionAndFpsExtrasAreAccepted() {
+        Intent intent = new Intent()
+                .putExtra(ShortcutTrampoline.EXTRA_STREAM_RESOLUTION, PreferenceConfiguration.AUTO_STREAM_VALUE)
+                .putExtra(ShortcutTrampoline.EXTRA_STREAM_FPS, PreferenceConfiguration.AUTO_STREAM_VALUE);
+
+        SharedPreferences launchPrefs = ShortcutTrampoline.getLaunchSharedPreferences(context, intent);
+
+        assertEquals(
+                PreferenceConfiguration.AUTO_STREAM_VALUE,
+                launchPrefs.getString(RESOLUTION_PREF_KEY, null));
+        assertEquals(
+                PreferenceConfiguration.AUTO_STREAM_VALUE,
+                launchPrefs.getString(FPS_PREF_KEY, null));
+    }
+
+    @Test
+    public void customFpsExtraOverridesSavedFpsForCurrentLaunchOnly() {
+        defaultPrefs.edit()
+                .putString(RESOLUTION_PREF_KEY, PreferenceConfiguration.RES_1080P)
+                .putString(FPS_PREF_KEY, "60")
+                .commit();
+
+        Intent intent = new Intent()
+                .putExtra(ShortcutTrampoline.EXTRA_STREAM_FPS, "120");
+
+        PreferenceConfiguration launchConfig = PreferenceConfiguration.readPreferences(
+                context,
+                ShortcutTrampoline.getLaunchSharedPreferences(context, intent));
+
+        assertEquals(120f, launchConfig.fps, 0.001f);
+        assertEquals("60", defaultPrefs.getString(FPS_PREF_KEY, null));
+    }
+
+    @Test
+    public void autoSettingsResolveAgainstCurrentDisplay() {
+        defaultPrefs.edit()
+                .putString(RESOLUTION_PREF_KEY, PreferenceConfiguration.AUTO_STREAM_VALUE)
+                .putString(FPS_PREF_KEY, PreferenceConfiguration.AUTO_STREAM_VALUE)
+                .commit();
+
+        PreferenceConfiguration config = PreferenceConfiguration.readPreferences(context);
+
+        assertTrue(config.width > 0);
+        assertTrue(config.height > 0);
+        assertTrue(config.fps > 0);
     }
 
     private static void resetProfilesManager() {

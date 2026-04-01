@@ -190,6 +190,7 @@
     <string name="text_native_res_dialog">Native resolution and/or FPS may not be supported by the streaming server. You will probably need to configure a matching custom display mode for the host PC manually.\n\nIf you choose to create a custom resolution in NVIDIA Control Panel to match your screen settings, please ensure you have read and understood NVIDIA\'s warning regarding possible monitor damage, PC instability, and other potential problems.\n\nWe are not responsible for any problems resulting from creating a custom resolution on your PC.\n\nIt may be that your monitor does not support a necessary display configuration. If so, you may try to set up a virtual monitor. Finally, if your device or host PC does not support streaming at a specific resolution or refresh rate, you\'re out of luck unfortunately.</string>
     <string name="title_fps_list">Video frame rate</string>
     <string name="summary_fps_list">Increase for a smoother video stream. Decrease for better performance on lower end devices.</string>
+    <string name="stream_auto">Auto (Current Display)</string>
     <string name="title_seekbar_bitrate">Video bitrate</string>
     <string name="summary_seekbar_bitrate">Increase for better image quality. Decrease to improve performance on slower connections.</string>
     <string name="title_seekbar_metered_bitrate">Video bitrate on metered networks</string>
@@ -720,4 +721,3 @@
         <string name="title_checkbox_snappy_input">Snappy Input</string>
         <string name="summary_checkbox_snappy_input">Offload input to a background thread and ignore tiny axis/trigger deltas for a smoother feel. </string>
 </resources>
-

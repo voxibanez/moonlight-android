@@ -302,16 +302,13 @@ public class StreamSettings extends AppCompatActivity {
         }
 
         private void resetBitrateToDefault(SharedPreferences prefs, String res, String fps) {
-            if (res == null) {
-                res = prefs.getString(PreferenceConfiguration.RESOLUTION_PREF_STRING, PreferenceConfiguration.DEFAULT_RESOLUTION);
-            }
-            if (fps == null) {
-                fps = prefs.getString(PreferenceConfiguration.FPS_PREF_STRING, PreferenceConfiguration.DEFAULT_FPS);
-            }
-
             prefs.edit()
                     .putInt(PreferenceConfiguration.BITRATE_PREF_STRING,
-                            PreferenceConfiguration.getDefaultBitrate(res, fps))
+                            PreferenceConfiguration.getDefaultBitrate(
+                                    requireContext(),
+                                    prefs,
+                                    res,
+                                    fps))
                     .apply();
         }
 
