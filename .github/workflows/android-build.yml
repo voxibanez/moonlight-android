@@ -113,16 +113,19 @@ jobs:
       - name: Download debug APK artifacts
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: gh run download "$GITHUB_RUN_ID" -n debug-apks -D release-assets/debug
 
       - name: Download release APK artifacts
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: gh run download "$GITHUB_RUN_ID" -n release-apks -D release-assets/release
 
       - name: Create or update release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.tag-build.outputs.tag_name }}
         shell: bash
         run: |
