@@ -98,7 +98,7 @@ android {
             def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
             def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
             def keyAliasValue = System.getenv("ANDROID_KEY_ALIAS")
-            def keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD")
+            def keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD") ?: keystorePassword
 
             if (keystorePath != null && keystorePassword != null &&
                     keyAliasValue != null && keyPasswordValue != null) {
