@@ -93,6 +93,23 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            def keyAliasValue = System.getenv("ANDROID_KEY_ALIAS")
+            def keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD")
+
+            if (keystorePath != null && keystorePassword != null &&
+                    keyAliasValue != null && keyPasswordValue != null) {
+                storeFile file(keystorePath)
+                storePassword keystorePassword
+                keyAlias keyAliasValue
+                keyPassword keyPasswordValue
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".noirdebug"
@@ -140,6 +157,7 @@ android {
             resValue "string", "app_label_game", "Artemis (Game)"
 
             minifyEnabled true
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
